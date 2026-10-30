@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cron-schedule
+  namespace: test
+  labels:
+    app: price-fetcher
+data:
+  cronjobs: |
+    0 12 * * * /usr/bin/python3 /root/fetch_prices.py

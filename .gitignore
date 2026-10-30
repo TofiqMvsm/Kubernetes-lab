@@ -1,0 +1,7 @@
+# Ignore large binary archives and tarballs
+*.tgz
+*.tar
+*.tar.gz
+
+# Ignore Kubernetes secrets containing live credentials
+history-server/price-data-secret.yaml

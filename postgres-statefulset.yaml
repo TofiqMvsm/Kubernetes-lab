@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql-hl-test
+  namespace: test
+spec:
+  selector:
+    matchLabels:
+      app: postgresql-hl-test
+  serviceName: postgresql-hl
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: postgresql-hl-test
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:17.6
+        imagePullPolicy: "Always"
+        env:
+        - name: POSTGRES_DB
+          value: "test"
+        - name: POSTGRES_USER
+          value: "test"
+        - name: POSTGRES_PASSWORD
+          value: "postgres-password"
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgredb
+        ports:
+        - containerPort: 5432
+          name: postgres-port
+      volumes:
+      - name: postgredb
+        emptyDir: {}

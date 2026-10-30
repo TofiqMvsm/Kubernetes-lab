@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: history-server
+  namespace: production
+  labels:
+    app: electricity-calculator
+    microservice: history-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: electricity-calculator
+      microservice: history-server
+  template:
+    metadata:
+      labels:
+        app: electricity-calculator
+        microservice: history-server
+    spec:
+      containers:
+      - name: history-server
+        image: tofiqmovsumov/history-server:1.0.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: GARAGE_URI
+          value: "http://garage:3900"
+        - name: ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: price-data-secret
+              key: ACCESS_KEY
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: price-data-secret
+              key: SECRET_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: history-server
+  namespace: production
+  labels:
+    app: electricity-calculator
+    microservice: history-server
+spec:
+  type: ClusterIP
+  selector:
+    app: electricity-calculator
+    microservice: history-server
+  ports:
+  - port: 80
+    targetPort: 8080

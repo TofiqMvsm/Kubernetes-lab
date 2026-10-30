@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: garage-network-policy
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: garage
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app: electricity-calculator
+            microservice: history-server
+      ports:
+        - protocol: TCP
+          port: 3900
+        - protocol: TCP
+          port: 3901

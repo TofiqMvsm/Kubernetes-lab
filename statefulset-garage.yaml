@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: garage
+  labels:
+    app: garage
+spec:
+  selector:
+    matchLabels:
+      app: garage
+  serviceName: garage
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: garage
+    spec:
+      containers:
+      - name: garage
+        image: registry.hpc.ut.ee/mirror/dxflrs/garage:v2.4.1 #
+        command: ["/garage"]
+        args: #
+        - server
+        ports:
+        - containerPort: 3900 #
+          hostPort: 3900
+        - containerPort: 3901 #
+          hostPort: 3901
+        - containerPort: 3903 #
+          hostPort: 3903
+        volumeMounts: #
+        - name: garage-config
+          mountPath: /etc/garage.toml
+          subPath: garage.toml
+          readOnly: true
+        - name: garage-meta
+          mountPath: /var/lib/garage/meta
+        - name: garage-data
+          mountPath: /var/lib/garage/data
+      volumes: #
+        - name: garage-config
+          secret:
+            secretName: garage-secret
+        - name: garage-meta
+          emptyDir: {} #
+        - name: garage-data
+          emptyDir: {}

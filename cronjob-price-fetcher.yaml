@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: price-fetcher
+  namespace: production
+  labels:
+    app: electricity-calculator
+    microservice: price-fetcher
+spec:
+  timeZone: "Etc/UTC"
+  schedule: "0 12 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: price-fetcher
+            image: tofiqmovsumov/price-fetcher-script:1.0.0
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: HISTORY_SERVER_URI
+              value: "http://history-server.production.svc.cluster.local:80"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          restartPolicy: OnFailure

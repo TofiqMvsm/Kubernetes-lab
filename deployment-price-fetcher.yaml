@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: price-fetcher
+spec:
+  selector:
+    matchLabels:
+      app: price-fetcher
+  template:
+    metadata:
+      labels:
+        app: price-fetcher
+    spec:
+      containers:
+      - name: price-fetcher
+        image: registry.hpc.ut.ee/mirror/tofiqmovsumov/price-fetcher-service:latest
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: cronjobs-file
+          mountPath: /etc/crontabs/root
+          subPath: cronjobs
+      volumes:
+      - name: cronjobs-file
+        configMap:
+          name: cron-schedule
