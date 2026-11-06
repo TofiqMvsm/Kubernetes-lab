@@ -37,7 +37,7 @@ published in advance. The question the application answers:
 |---|---|---|
 | **Price fetcher** | Scheduled job that fetches next-day Estonian (`ee`) prices from the Elering API (`dashboard.elering.ee/api/nps/price/csv`) | Implemented |
 | **History server** | HTTP API that stores price data in Garage (S3 storage) and serves it as JSON (`GET/POST /api/prices?day=YYYY-MM-DD`) | Implemented |
-| **Garage** | Lightweight S3-compatible object storage, bucket `price-data` | Deployed |
+| **Garage** | Lightweight S3-compatible object storage, bucket `price-data`; data now persists on Longhorn volumes | Deployed, persistent |
 | **Application server** | Computes the cheapest time window for a requested duration | *(planned)* |
 | **Front-end** | Web UI for users | *(planned)* |
 
@@ -62,7 +62,7 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | **Image building** | `buildah` |
 | **Cluster** | Kubernetes installed with `kubeadm` (version pinned by the course), 1 control-plane node (also schedulable) + 2 workers |
 | **CNI / networking** | Cilium (with Hubble UI for traffic visibility), Gateway API |
-| **Storage** | Garage (S3-compatible) |
+| **Storage** | Garage (S3-compatible object storage) running on **Longhorn** replicated block volumes (2 replicas); local PersistentVolume was used first as a learning step |
 | **Registry** | Docker Hub (images must be reachable from all nodes), pulled through the university mirror `registry.hpc.ut.ee/mirror/` |
 | **Client tools** | `kubectl`, `jq`, optionally `k9s` / Lens |
 
@@ -73,6 +73,8 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | `production` | The real application components (price-fetcher, history-server, Garage). **This is what the scoring system checks.** |
 | `test` | Experiments (nginx, PostgreSQL headless-service test) |
 | `default` | echoserver test pod, Gateway test |
+| `longhorn-system` | Longhorn storage system (managers, UI, CSI) |
+| `storage` | Longhorn test workload (`writer-pod` + `longhorn-pvc`) |
 
 ## 4. Essential files (on the CentOS VM, `~/`)
 
@@ -80,13 +82,17 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | File | Purpose |
 |---|---|
 | `kubeadm-config.yaml` | `kubeadm init` configuration (control-plane endpoint, pod/service subnets, containerd socket, systemd cgroup driver) |
+| `cni-plugins-linux-amd64-v1.9.1.tgz` | CNI plugins needed by `nerdctl`/containerd networking |
+| `nerdctl-2.3.5-linux-amd64.tar.gz` | `nerdctl` CLI binary archive |
 
 ### Containerization
 | File / folder | Purpose |
 |---|---|
 | `dockerfile_lab/` (`Dockerfile`, `server.py`, `my.server.tar`) | Small Flask demo used to learn building images and exporting them as a tar |
+| `Dockerfile` | Image for the price fetcher |
 | `fetch_prices.py` | The price-fetcher script (Elering API, posts to the history server) |
 | `cronjobs` | Cron schedule file used when the fetcher ran as a cron-in-container |
+| `price-fetcher.tar` | Exported image archive of the price fetcher |
 
 ### Kubernetes manifests
 | File | Purpose |
@@ -99,7 +105,10 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | `configmap-cron-schedule.yaml` | Cron schedule as a ConfigMap mounted into the container |
 | `cronjob-price-fetcher.yaml` | price-fetcher as a proper Kubernetes **CronJob** (final form) |
 | `garage.toml` | Garage configuration (stored in a Secret) |
-| `statefulset-garage.yaml` | Garage StatefulSet |
+| `statefulset-garage.yaml` | Garage StatefulSet. Now uses a `volumeClaimTemplates` entry (`garage-storage`, StorageClass `longhorn`, 1Gi) with `meta` and `data` mounted via `subPath` |
+| `longhorn.yaml` | Longhorn 1.13.0 manifest, StorageClass edited to `numberOfReplicas: "2"` |
+| StorageClass / PV / PVC manifests (`local-storage`, `garage-pv-0`, `garage-pvc-0`) | Local-volume step that preceded Longhorn; kept for reference |
+| `writer-pod` manifest (namespace `storage`) | Test Pod proving data survives on a Longhorn volume |
 | `postgres-statefulset.yaml`, `postgres-service.yaml` | PostgreSQL StatefulSet + headless Service (networking experiment) |
 | `network-policy.yaml` | Example NetworkPolicy for echoserver |
 | `garage-network-policy.yaml` | Only the history-server may talk to Garage |
@@ -113,6 +122,10 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | `history-server.yaml` | Deployment + Service for the history server |
 | `garage-svc.yaml` | ClusterIP Service for Garage |
 | `price-data-secret.yaml` | Secret with Garage access key / secret key |
+
+> **Security note:** `garage.toml` and `price-data-secret.yaml` contain secrets (`rpc_secret`,
+> `admin_token`, access keys). **Never commit them to a public repository.** Add them to
+> `.gitignore` or commit templates with placeholders instead.
 
 ## 5. What we have achieved so far
 
@@ -128,6 +141,9 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
   price-fetcher CronJob posts data to it.
 - Networking: ClusterIP, NodePort and headless Services, Gateway API (Cilium) and
   NetworkPolicies (including isolating Garage).
+- Storage: showed that `emptyDir` loses data when a Pod is replaced, then fixed it with a local
+  PersistentVolume, and finally migrated Garage to **Longhorn** (installed with `longhornctl`
+  preflight checks) so the price data survives Pod restarts and is replicated across nodes.
 
 ## 6. Roadmap (course topics)
 
@@ -138,7 +154,32 @@ Elering API --> price-fetcher (CronJob) --POST JSON--> history-server --S3 API--
 | 3 | Kubernetes architecture and cluster setup | Done |
 | 4 | Workloads, configuration, secrets | Done |
 | 5 | Services, Gateway API, networking | Done |
-| 6 | Storage and database management | *(planned)* |
+| 6 | Storage and database management (PV/PVC, Longhorn) | Done |
 | 7 | Container lifecycle, QoS | *(planned)* |
 | 8 | CI/CD | *(planned)* |
 | 9-14 | Monitoring/logging, upgrades and operators, architecture patterns, cluster administration, security, summary | *(planned)* |
+
+## 7. Useful commands
+
+```bash
+# Cluster state
+kubectl get nodes
+kubectl get pods -A
+kubectl get all -n production
+
+# Application
+kubectl get cronjob -n production
+kubectl create job --from=cronjob/price-fetcher price-fetcher-manual -n production
+kubectl logs -l job-name=price-fetcher-manual -n production
+
+# Garage
+kubectl exec -n production garage-0 -- /garage bucket info price-data
+
+# Storage
+kubectl get storageclass
+kubectl get pvc -A
+kubectl get pods -n longhorn-system
+
+# Network / health
+cilium status
+```
